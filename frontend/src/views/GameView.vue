@@ -80,7 +80,7 @@ const copyText = async () => {
       />
     </div>
 
-    <!-- TODO: Дополнить игровой интерфейс. Добавить индикатор для отображения очереди хода. -->
+    <!-- TODO: Дополнить игровой интерфейс. -->
     <div
       v-if="gaemStore.gameData"
       class="flex flex-col items-center gap-5 rounded-xl p-10 bg-black min-w-96"
@@ -88,8 +88,16 @@ const copyText = async () => {
       <div>{{ `Game is ${gaemStore.gameData.status}` }}</div>
       <div>{{ `Current game step: ${gaemStore.gameData.step}` }}</div>
       <div v-if="gaemStore.gameData.winnerId">{{ `winnerId: ${gaemStore.gameData.winnerId}` }}</div>
+      <div>{{ `Winning score quantity: ${gaemStore.gameData.winningScore}` }}</div>
       <div>{{ `My score: ${gaemStore.myUserData()?.score}` }}</div>
       <div>{{ `Am I a winner: ${gaemStore.gameData.winnerId === wsClient.socket?.id}` }}</div>
+      <div class="flex items-center gap-2">
+        <span>My Turn:</span>
+        <span
+          :class="gaemStore.isMyTurn() ? 'bg-green-500' : 'bg-red-500'"
+          class="h-4 w-4 rounded-full"
+        ></span>
+      </div>
     </div>
 
     <div v-if="gaemStore.gameData?.outputMatrix">

@@ -11,7 +11,9 @@ export const useSocketStore = defineStore('socket', () => {
   function connect() {
     if (socket.value) return;
 
-    socket.value = io('http://localhost:4005');
+    const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+    socket.value = io(backendUrl);
 
     socket.value.on('connect', () => {
       console.log('🔥 Socket.IO connected');

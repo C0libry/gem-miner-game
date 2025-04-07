@@ -6,6 +6,8 @@ import { useRouter } from 'vue-router';
 
 import { type CreateGame, CreateGameScheme } from '@/contracts';
 
+const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
 const router = useRouter();
 
 const loginSchema = toTypedSchema(CreateGameScheme);
@@ -19,7 +21,7 @@ const { value: width } = useField<number>('width', undefined, { initialValue: 5 
 const { value: gemQuantity } = useField<number>('gemQuantity', undefined, { initialValue: 5 });
 
 const startGame = handleSubmit(async (dto: CreateGame) => {
-  const response = await axios.post<string>(`http://localhost:4005/game/`, dto);
+  const response = await axios.post<string>(`${backendUrl}/game/`, dto);
 
   router.push(`/game/${response.data}`);
 });

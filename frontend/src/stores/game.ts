@@ -17,9 +17,14 @@ export const useGameStore = defineStore('counter', () => {
     return gameData.value?.users.filter((user: IUser) => user.id !== wsClient.socket?.id);
   }
 
+  function isMyTurn(): boolean {
+    const wsClient = useSocketStore();
+    return gameData.value?.currentPlayerId === wsClient.socket?.id;
+  }
+
   function clear() {
     gameData.value = null;
   }
 
-  return { gameData, myUserData, otherUserData, clear };
+  return { gameData, myUserData, otherUserData, isMyTurn, clear };
 });
