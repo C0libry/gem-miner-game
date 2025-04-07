@@ -42,6 +42,8 @@ class Game {
       outputMatrix: this.getOutputMatrix(),
       users: this.users,
       step: this.step,
+      winningScore: this.winningScore(),
+      currentPlayerId: this.currentUserId(),
       winnerId: this.winnerId,
     };
   }
@@ -80,7 +82,7 @@ class Game {
   }
 
   private isEnd() {
-    return this.currentUser().score >= this.winningQuantity();
+    return this.currentUser().score >= this.winningScore();
   }
 
   currentUserId(): string {
@@ -127,7 +129,7 @@ class Game {
     }
   }
 
-  winningQuantity() {
+  winningScore() {
     return Math.ceil((this.gemQuantity + 1) / this.users.length);
   }
 

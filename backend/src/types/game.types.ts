@@ -23,5 +23,7 @@ export interface IGameData {
   outputMatrix: OutputMatrixType;
   step: number;
   users: IUser[];
+  winningScore: number;
+  currentPlayerId: string;
   winnerId?: string;
 }
