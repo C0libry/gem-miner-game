@@ -8,8 +8,16 @@ export interface ICoordinates {
 }
 
 export interface IUser {
-  id: string;
+  userId: string;
+  socketId: string;
+  username: string;
   score: number;
+}
+
+export enum GameResultStatus {
+  Win = 'win',
+  Loss = 'loss',
+  Drow = 'drow',
 }
 
 export enum GameStatus {
@@ -22,8 +30,8 @@ export interface IGameData {
   status: GameStatus;
   outputMatrix: OutputMatrixType;
   step: number;
-  users: IUser[];
+  users: Omit<IUser, 'socketId' | 'userId'>[];
   winningScore: number;
-  currentPlayerId: string;
-  winnerId?: string;
+  currentPlayerUsername: string;
+  winnerUsername?: string;
 }

@@ -13,9 +13,9 @@ import {
 class Game {
   private _status: GameStatus = GameStatus.Waiting;
   private readonly matrix: MatrixType;
-  private readonly users: IUser[] = [];
+  private users: IUser[] = [];
   private step: number = 0;
-  private winnerId?: string = null;
+  private winnerUsername?: string = null;
 
   constructor(
     height: number,
@@ -40,16 +40,36 @@ class Game {
     return {
       status: this.status,
       outputMatrix: this.getOutputMatrix(),
-      users: this.users,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      users: this.users.map(({ userId, socketId, ...user }) => user),
       step: this.step,
       winningScore: this.winningScore(),
-      currentPlayerId: this.currentUserId(),
-      winnerId: this.winnerId,
+      currentPlayerUsername: this.currentPlayerUsername(),
+      winnerUsername: this.winnerUsername,
     };
   }
 
-  addUser(user: IUser) {
-    this.users.push(user);
+  addUser(user: Omit<IUser, 'score'>) {
+    this.users.push({ ...user, score: 0 });
+  }
+
+  findUserByUserId(userId: string) {
+    return this.users.find((user) => user.userId === userId);
+  }
+
+  removeUser(userId: string) {
+    this.users = this.users.filter((user) => user.userId !== userId);
+  }
+
+  hasUsername(username: string): boolean {
+    return this.users.some((user) => user.username === username);
+  }
+
+  reconnectUser(userId: string, newSocketId: string) {
+    const user = this.findUserByUserId(userId);
+    if (user) {
+      user.socketId = newSocketId;
+    }
   }
 
   start() {
@@ -59,13 +79,13 @@ class Game {
   }
 
   nextStep(coordinates) {
-    if (this._status !== GameStatus.Started) return;
+    if (this.status !== GameStatus.Started) return;
 
     this.openCell(coordinates);
 
     if (this.isEnd()) {
       this._status = GameStatus.Finished;
-      this.winnerId = this.currentUser().id;
+      this.winnerUsername = this.currentUser()?.username;
     }
 
     this.step++;
@@ -82,15 +102,21 @@ class Game {
   }
 
   private isEnd() {
-    return this.currentUser().score >= this.winningScore();
+    const user = this.currentUser();
+    if (!user) return false;
+    return user.score >= this.winningScore();
   }
 
-  currentUserId(): string {
-    return this.currentUser().id;
+  currentPlayerPersistentId(): string | null {
+    return this.currentUser()?.userId ?? null;
+  }
+
+  currentPlayerUsername(): string | null {
+    return this.currentUser()?.username ?? null;
   }
 
   currentUserScore(): number {
-    return this.currentUser().score;
+    return this.currentUser()?.score ?? 0;
   }
 
   private getOutputMatrix(): OutputMatrixType {
@@ -130,10 +156,12 @@ class Game {
   }
 
   winningScore() {
+    if (this.users.length === 0) return 0;
     return Math.ceil((this.gemQuantity + 1) / this.users.length);
   }
 
-  private currentUser(): IUser {
+  currentUser(): IUser | undefined {
+    if (this.users.length === 0) return undefined;
     const currentUserIndex = this.step % this.users.length;
     return this.users[currentUserIndex];
   }
@@ -226,16 +254,43 @@ export class GamesManager {
     return gameId;
   }
 
+  findGameByUserId(userId: string): { gameId: string; game: Game } | undefined {
+    for (const [gameId, game] of this.games.entries()) {
+      if (game.findUserByUserId(userId)) {
+        return { gameId, game };
+      }
+    }
+    return undefined;
+  }
+
+  reconnectUser(
+    userId: string,
+    newSocketId: string,
+  ): { gameId: string; gameData: IGameData } | undefined {
+    const findResult = this.findGameByUserId(userId);
+    if (findResult) {
+      const { gameId, game } = findResult;
+      game.reconnectUser(userId, newSocketId);
+      return { gameId, gameData: game.getGameData() };
+    }
+    return undefined;
+  }
+
   nextStep(gameId: string, coordinates: ICoordinates) {
     const game = this.games.get(gameId);
+    if (!game) return null; // Or throw an error
 
     const gameData = game.nextStep(coordinates);
 
     return gameData;
   }
 
-  endGame(gameId: string, game: Game) {
-    game.openAll();
-    this.games.delete(gameId);
+  endGame(gameId: string) {
+    const game = this.games.get(gameId);
+    if (game) {
+      game.openAll();
+      // maybe do something else before deleting
+      this.games.delete(gameId);
+    }
   }
 }
