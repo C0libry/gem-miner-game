@@ -28,7 +28,7 @@ const startGame = handleSubmit(async (dto: CreateGame) => {
 </script>
 
 <template>
-  <main class="flex flex-col items-center justify-center flex-grow gap-5">
+  <main class="flex flex-col items-center justify-center grow gap-5">
     <h1 class="text-3xl">Create new game or join by game id</h1>
     <form
       class="bg-black flex flex-col gap-5 rounded-xl p-10 min-w-96"

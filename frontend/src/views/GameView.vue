@@ -1,39 +1,84 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { z } from 'zod';
 
+import GameOverModal from '@/components/GameOverModal.vue';
+import JoinForm from '@/components/JoinForm.vue';
+
 import { useGameStore } from '@/stores/game';
 import { useSocketStore } from '@/stores/socket';
-import type { IUser } from '@/types';
+import type { IGameData } from '@/types';
 
 const wsClient = useSocketStore();
-const gaemStore = useGameStore();
+const gameStore = useGameStore();
 
 const router = useRouter();
 const route = useRoute();
-const gameId = route.params.gameId;
+const gameId = route.params.gameId as string;
 
-const errorMessage = ref<string | undefined>(undefined);
-
+const hasJoined = ref(false);
+const isLoading = ref(true);
+const errorMessage = ref<string | null>(null);
 const absoluteUrl = ref<string>(window.location.href);
-const inputRef = ref(null);
-
-gaemStore.clear();
 
 if (!z.string().uuid().safeParse(gameId).success) {
   router.push('/');
 }
 
-joinGame();
-
-async function joinGame() {
-  const response = await wsClient.socket?.emitWithAck('game:join', { gameId });
-  errorMessage.value = response.error;
+// This function is called after the JoinForm emits a 'joined' event
+function handleJoined(initialGameData: IGameData) {
+  gameStore.gameData = initialGameData;
+  hasJoined.value = true;
+  isLoading.value = false;
 }
+
+async function attemptAutoJoin() {
+  // Try to join with the stored username
+  const storedUsername = gameStore.username;
+  if (!storedUsername) {
+    isLoading.value = false;
+    return;
+  }
+
+  if (!wsClient.socket?.connected) {
+    // Wait for connection if not established
+    await new Promise<void>(resolve => {
+      wsClient.socket?.on('connect', () => resolve());
+      setTimeout(() => resolve(), 1500); // Timeout to avoid infinite wait
+    });
+  }
+
+  try {
+    const response = await wsClient.socket?.emitWithAck('game:join', {
+      gameId,
+      username: storedUsername
+    });
+    if (response && !response.error) {
+      handleJoined(response);
+    } else {
+      // If auto-join fails (e.g. game full, name taken), show form
+      isLoading.value = false;
+      // Optionally show the error: errorMessage.value = response.error;
+    }
+  } catch {
+    isLoading.value = false;
+    errorMessage.value = 'Could not automatically rejoin the game.';
+  }
+}
+
+onMounted(() => {
+  wsClient.connect();
+  attemptAutoJoin();
+});
+
+onUnmounted(() => {
+  gameStore.gameData = null;
+});
 
 function gameStep(item: number | string | null, x: number, y: number) {
   if (item !== null) return;
+  if (!gameStore.isMyTurn) return;
 
   const dto = {
     gameId,
@@ -43,83 +88,114 @@ function gameStep(item: number | string | null, x: number, y: number) {
   wsClient.socket?.emit('game:step', dto);
 }
 
+function goToHome() {
+  gameStore.closeGameOverModal();
+  router.push('/');
+}
+
+function playAgain() {
+  // TODO: Сделать поиск игры
+  gameStore.closeGameOverModal();
+  router.push('/');
+}
+
 const copyText = async () => {
   await navigator.clipboard.writeText(absoluteUrl.value);
 };
 </script>
 
 <template>
-  <main class="flex flex-col items-center justify-center flex-grow gap-5">
-    <div
-      class="flex flex-col items-center gap-10 text-2xl"
-      v-if="errorMessage"
-    >
-      <div class="text-red-400">{{ errorMessage }}</div>
-      <RouterLink
-        class="hover:text-primary-400"
-        to="/"
-        >Back to home page
-      </RouterLink>
-    </div>
-    <div
-      class="flex flex-col items-center gap-10 text-2xl"
-      v-else-if="!gaemStore.gameData"
-    >
-      <div>Waiting for the players</div>
-      <button
-        @click="copyText"
-        class="hover:text-teal-400"
-      >
-        {{ absoluteUrl }}
-      </button>
-      <input
-        ref="inputRef"
-        v-model="absoluteUrl"
-        type="text"
-        class="hidden"
-      />
-    </div>
+  <main class="flex flex-col items-center justify-center grow gap-5">
+    <GameOverModal
+      v-if="gameStore.showGameOverModal && gameStore.gameResult"
+      :result="gameStore.gameResult"
+      @close="goToHome"
+      @play-again="playAgain"
+    />
 
-    <!-- TODO: Дополнить игровой интерфейс. -->
-    <div
-      v-if="gaemStore.gameData"
-      class="flex flex-col items-center gap-5 rounded-xl p-10 bg-black min-w-96"
-    >
-      <div>{{ `Game is ${gaemStore.gameData.status}` }}</div>
-      <div>{{ `Current game step: ${gaemStore.gameData.step}` }}</div>
-      <div v-if="gaemStore.gameData.winnerId">{{ `winnerId: ${gaemStore.gameData.winnerId}` }}</div>
-      <div>{{ `Winning score quantity: ${gaemStore.gameData.winningScore}` }}</div>
-      <div>{{ `My score: ${gaemStore.myUserData()?.score}` }}</div>
-      <div>{{ `Am I a winner: ${gaemStore.gameData.winnerId === wsClient.socket?.id}` }}</div>
-      <div class="flex items-center gap-2">
-        <span>My Turn:</span>
-        <span
-          :class="gaemStore.isMyTurn() ? 'bg-green-500' : 'bg-red-500'"
-          class="h-4 w-4 rounded-full"
-        ></span>
-      </div>
-    </div>
+    <div v-if="isLoading">Loading...</div>
 
-    <div v-if="gaemStore.gameData?.outputMatrix">
-      <div class="flex flex-col gap-y-3">
-        <div
-          v-for="(row, y) in gaemStore.gameData.outputMatrix"
-          class="flex gap-3"
-          :key="y"
-        >
-          <div
-            v-for="(item, x) in row"
-            :key="x"
+    <JoinForm
+      v-else-if="!hasJoined"
+      :game-id="gameId"
+      @joined="handleJoined"
+    />
+
+    <div
+      v-else-if="hasJoined && gameStore.gameData"
+      class="flex flex-col items-center gap-y-10"
+    >
+      <div class="flex flex-col items-center gap-2 rounded-xl p-10 bg-black min-w-96">
+        <div>{{ `Game is ${gameStore.gameData.status}` }}</div>
+        <div>
+          Players:
+          <span
+            v-for="(user, index) in gameStore.gameData.users"
+            :key="user.username"
+            :class="{
+              'text-green-400': user.username === gameStore.gameData.currentPlayerUsername
+            }"
           >
-            <button
-              class="rounded-md bg-slate-700 hover:bg-slate-800 min-h-12 min-w-12 text-white"
-              @click="gameStep(item, x, y)"
+            {{ user.username }} ({{ user.score }}){{
+              index < gameStore.gameData.users.length - 1 ? ', ' : ''
+            }}
+          </span>
+        </div>
+        <div v-if="gameStore.gameData.winnerUsername">
+          {{ `Winner: ${gameStore.gameData.winnerUsername}` }}
+        </div>
+        <div>{{ `Winning score: ${gameStore.gameData.winningScore}` }}</div>
+        <div>{{ `My score: ${gameStore.myUserData?.score ?? 0}` }}</div>
+        <div class="flex items-center gap-2">
+          <span>My Turn:</span>
+          <span
+            :class="gameStore.isMyTurn ? 'bg-green-500' : 'bg-red-500'"
+            class="h-4 w-4 rounded-full"
+          ></span>
+        </div>
+        <div
+          class="mt-4 flex flex-col items-center"
+          v-if="gameStore.gameData.users.length < 2 && gameStore.gameData.status === 'waiting'"
+        >
+          <p>Waiting for another player...</p>
+          <button
+            @click="copyText"
+            class="bg-gray-800 rounded-md p-3 hover:text-teal-400 mt-2 cursor-pointer"
+          >
+            Copy Invite Link
+          </button>
+        </div>
+      </div>
+
+      <div v-if="gameStore.gameData.outputMatrix">
+        <div class="flex flex-col gap-y-3">
+          <div
+            v-for="(row, y) in gameStore.gameData.outputMatrix"
+            class="flex gap-3"
+            :key="y"
+          >
+            <div
+              v-for="(item, x) in row"
+              :key="x"
             >
-              {{ item }}
-            </button>
+              <button
+                :disabled="!gameStore.isMyTurn || item !== null"
+                class="rounded-md bg-slate-700 hover:bg-slate-800 min-h-12 min-w-12 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                @click="gameStep(item, x, y)"
+              >
+                {{ item }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
+    </div>
+
+    <div
+      v-else-if="errorMessage"
+      class="text-red-400 text-xl"
+    >
+      {{ errorMessage }}
     </div>
   </main>
 </template>
