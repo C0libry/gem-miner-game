@@ -1,17 +1,24 @@
 import { defineStore } from 'pinia';
 import { Socket, io } from 'socket.io-client';
 import { onUnmounted, ref } from 'vue';
+import axios from 'axios';
 
 import { useGameStore } from './game';
 import type { IGameData } from '@/types';
 
-const getCredentials = () => {
+const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+const getCredentials = async (): Promise<{ userId: string; userSecret: string }> => {
   let userId = localStorage.getItem('userId');
   let userSecret = localStorage.getItem('userSecret');
 
   if (!userId || !userSecret) {
-    userId = crypto.randomUUID();
-    userSecret = crypto.randomUUID();
+    console.log('No local credentials found. Fetching from server...');
+    const response = await axios.post<{ userId: string; userSecret: string }>(
+      `${backendUrl}/auth/session`,
+    );
+    userId = response.data.userId;
+    userSecret = response.data.userSecret;
     localStorage.setItem('userId', userId);
     localStorage.setItem('userSecret', userSecret);
   }
@@ -21,11 +28,10 @@ const getCredentials = () => {
 export const useSocketStore = defineStore('socket', () => {
   const socket = ref<Socket | null>(null);
 
-  function connect() {
+  async function connect() {
     if (socket.value?.connected) return;
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
-    const { userId, userSecret } = getCredentials();
+    const { userId, userSecret } = await getCredentials();
 
     socket.value = io(backendUrl, {
       auth: {
@@ -64,12 +70,15 @@ export const useSocketStore = defineStore('socket', () => {
       gameStore.gameData = data;
     });
 
-    socket.value.on('game:finish', (data: { gameid: string; gameData: IGameData }) => {
-      console.warn('game:finish:', data);
-      const gameStore = useGameStore();
-      gameStore.gameData = data.gameData;
-      gameStore.endGame();
-    });
+    socket.value.on(
+      'game:finish',
+      (data: { gameid: string; gameData: IGameData; isWinner: boolean }) => {
+        console.warn('game:finish:', data);
+        const gameStore = useGameStore();
+        gameStore.gameData = data.gameData;
+        gameStore.endGame(data.isWinner);
+      },
+    );
   }
 
   function disconnect() {
