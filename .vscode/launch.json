@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Frontend (Vite)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "${workspaceFolder}/frontend",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Backend (NestJS)",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start:dev"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Frontend + Backend",
+      "configurations": [
+        "Frontend (Vite)",
+        "Backend (NestJS)"
+      ]
+    }
+  ]
+}
