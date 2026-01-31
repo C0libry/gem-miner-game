@@ -44,7 +44,7 @@ async function joinGame() {
     } else {
       emit('joined', response);
     }
-  } catch (e) {
+  } catch {
     errorMessage.value = 'Failed to connect to the server.';
   } finally {
     isLoading.value = false;

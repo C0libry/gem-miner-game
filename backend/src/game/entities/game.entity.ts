@@ -16,11 +16,13 @@ class Game {
   private users: IUser[] = [];
   private step: number = 0;
   private winnerUsername?: string = null;
+  public readonly isPublic: boolean;
 
   constructor(
     height: number,
     width: number,
     private readonly gemQuantity: number,
+    isPublic: boolean,
   ) {
     if (gemQuantity % 2 === 0)
       throw new Error('Gem quantity number must be odd.');
@@ -30,6 +32,7 @@ class Game {
 
     this.matrix = this.createField(height, width);
     this.addGems();
+    this.isPublic = isPublic;
   }
 
   get status() {
@@ -249,9 +252,25 @@ export class GamesManager {
   createNewGame(dto: CreateGameDto) {
     const gameId = randomUUID();
 
-    this.games.set(gameId, new Game(dto.height, dto.width, dto.gemQuantity));
+    this.games.set(
+      gameId,
+      new Game(dto.height, dto.width, dto.gemQuantity, dto.isPublic),
+    );
 
     return gameId;
+  }
+
+  findWaitingGame(): string | undefined {
+    for (const [gameId, game] of this.games.entries()) {
+      if (
+        game.isPublic &&
+        game.status === GameStatus.Waiting &&
+        game.getGameData().users.length < 2
+      ) {
+        return gameId;
+      }
+    }
+    return undefined;
   }
 
   findGameByUserId(userId: string): { gameId: string; game: Game } | undefined {

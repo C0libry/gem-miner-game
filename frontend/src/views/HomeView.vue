@@ -19,17 +19,22 @@ const { handleSubmit, errors } = useForm({
 const { value: height } = useField<number>('height', undefined, { initialValue: 5 });
 const { value: width } = useField<number>('width', undefined, { initialValue: 5 });
 const { value: gemQuantity } = useField<number>('gemQuantity', undefined, { initialValue: 5 });
+const { value: isPublic } = useField<boolean>('isPublic', undefined, { initialValue: true });
 
 const startGame = handleSubmit(async (dto: CreateGame) => {
-  const response = await axios.post<string>(`${backendUrl}/game/`, dto);
-
+  const response = await axios.post<string>(`${backendUrl}/game`, dto);
   router.push(`/game/${response.data}`);
 });
+
+async function findGame() {
+  const response = await axios.get<string>(`${backendUrl}/game/find`);
+  router.push(`/game/${response.data}`);
+}
 </script>
 
 <template>
   <main class="flex flex-col items-center justify-center grow gap-5">
-    <h1 class="text-3xl">Create new game or join by game id</h1>
+    <h1 class="text-3xl">Create new game or find a random one</h1>
     <form
       class="bg-black flex flex-col gap-5 rounded-xl p-10 min-w-96"
       @submit="startGame"
@@ -68,9 +73,31 @@ const startGame = handleSubmit(async (dto: CreateGame) => {
         <div class="text-red-400">{{ errors.gemQuantity }}</div>
       </div>
 
-      <button class="rounded-md bg-slate-800 hover:bg-slate-700 text-white py-2 px-4">
-        Start new game
-      </button>
+      <div class="flex items-center gap-3 rounded-md mt-2">
+        <input
+          class="h-5 w-5 rounded-md bg-slate-800 border-slate-600 text-orange-500 focus:ring-orange-500"
+          name="isPublic"
+          v-model="isPublic"
+          type="checkbox"
+        />
+        <label for="isPublic">Public Game (can be found by others)</label>
+      </div>
+
+      <div class="flex flex-col gap-4 mt-4">
+        <button
+          type="submit"
+          class="rounded-md bg-slate-800 hover:bg-slate-700 text-white py-2 px-4"
+        >
+          Start new game
+        </button>
+        <button
+          type="button"
+          @click="findGame"
+          class="rounded-md bg-orange-500 hover:bg-orange-600 text-white py-2 px-4"
+        >
+          Find Game
+        </button>
+      </div>
     </form>
   </main>
 </template>
