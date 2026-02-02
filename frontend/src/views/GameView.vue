@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import axios from 'axios';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { z } from 'zod';
 
@@ -22,11 +23,22 @@ const isLoading = ref(true);
 const errorMessage = ref<string | null>(null);
 const absoluteUrl = ref<string>(window.location.href);
 
+const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
 if (!z.string().uuid().safeParse(gameId).success) {
   router.push('/');
 }
 
-// This function is called after the JoinForm emits a 'joined' event
+watch(
+  () => wsClient.isConnected,
+  isConnected => {
+    if (isConnected) {
+      attemptAutoJoin();
+    }
+  },
+  { immediate: true }
+);
+
 function handleJoined(initialGameData: IGameData) {
   gameStore.gameData = initialGameData;
   hasJoined.value = true;
@@ -34,7 +46,6 @@ function handleJoined(initialGameData: IGameData) {
 }
 
 async function attemptAutoJoin() {
-  // Try to join with the stored username
   const storedUsername = gameStore.username;
   if (!storedUsername) {
     isLoading.value = false;
@@ -42,11 +53,8 @@ async function attemptAutoJoin() {
   }
 
   if (!wsClient.socket?.connected) {
-    // Wait for connection if not established
-    await new Promise<void>(resolve => {
-      wsClient.socket?.on('connect', () => resolve());
-      setTimeout(() => resolve(), 1500); // Timeout to avoid infinite wait
-    });
+    isLoading.value = false;
+    return;
   }
 
   try {
@@ -57,9 +65,7 @@ async function attemptAutoJoin() {
     if (response && !response.error) {
       handleJoined(response);
     } else {
-      // If auto-join fails (e.g. game full, name taken), show form
       isLoading.value = false;
-      // Optionally show the error: errorMessage.value = response.error;
     }
   } catch {
     isLoading.value = false;
@@ -69,7 +75,6 @@ async function attemptAutoJoin() {
 
 onMounted(() => {
   wsClient.connect();
-  attemptAutoJoin();
 });
 
 onUnmounted(() => {
@@ -93,10 +98,10 @@ function goToHome() {
   router.push('/');
 }
 
-function playAgain() {
-  // TODO: Сделать поиск игры
+async function playAgain() {
   gameStore.closeGameOverModal();
-  router.push('/');
+  const response = await axios.get<string>(`${backendUrl}/game/find`);
+  router.push(`/game/${response.data}`);
 }
 
 const copyText = async () => {

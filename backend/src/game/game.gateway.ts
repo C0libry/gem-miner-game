@@ -35,37 +35,35 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     this.socketIdToUserId.set(client.id, userId);
-    Logger.warn(`Client connected: ${client.id}, userId: ${userId}`);
+    Logger.debug(`Client connected: ${client.id}, userId: ${userId}`);
   }
 
   handleDisconnect(client: Socket) {
     const userId = this.socketIdToUserId.get(client.id);
-    Logger.warn(`Client disconnected: ${client.id}, userId: ${userId}`);
+    Logger.debug(`Client disconnected: ${client.id}, userId: ${userId}`);
     this.socketIdToUserId.delete(client.id);
   }
 
   @SubscribeMessage('game:join')
-  // TODO: Вынести типы параметров методов.
-  handleJoinGame(client: Socket, dto: { gameId: string; username: string }) {
+  async handleJoinGame(
+    client: Socket,
+    dto: { gameId: string; username: string },
+  ) {
     const userId = this.socketIdToUserId.get(client.id);
-    if (!userId) {
-      return { error: 'Authentication error.' };
-    }
+    if (!userId) return { error: 'Authentication error.' };
 
-    const gameToJoin = this.gamesManager.games.get(dto.gameId);
-    if (!gameToJoin) {
-      return { error: 'The game not found.' };
-    }
+    const gameToJoin = await this.gamesManager.getGame(dto.gameId);
+    if (!gameToJoin) return { error: 'Game not found.' };
 
-    this.removeUser(userId, dto);
+    // TODO: Продумать логику что делать, если этот пользователь находится в другой игре
 
     const isPlayerInGame = gameToJoin.findUserByUserId(userId);
 
-    // If player is already in this game, it's a reconnect.
     if (isPlayerInGame) {
       gameToJoin.reconnectUser(userId, client.id);
+      await this.gamesManager.saveGame(dto.gameId, gameToJoin);
       client.join(dto.gameId);
-      Logger.log(`User ${userId} reconnected to game ${dto.gameId}`);
+      Logger.debug(`User ${userId} reconnected to game ${dto.gameId}`);
       return gameToJoin.getGameData();
     }
 
@@ -83,69 +81,54 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.join(dto.gameId);
     gameToJoin.addUser({ userId, socketId: client.id, username: dto.username });
     this.server.to(dto.gameId).emit('game:joined', { username: dto.username });
-    Logger.log(`User ${userId} (${dto.username}) joined game ${dto.gameId}`);
+    Logger.debug(`User ${userId} (${dto.username}) joined game ${dto.gameId}`);
 
     if (gameToJoin.getGameData().users.length === 2) {
       const gameData = gameToJoin.start();
-      Logger.log(`Game started id: ${dto.gameId}`);
+      Logger.debug(`Game started id: ${dto.gameId}`);
+      await this.gamesManager.saveGame(dto.gameId, gameToJoin);
       this.server.to(dto.gameId).emit('game:start', gameData);
+    } else {
+      await this.gamesManager.saveGame(dto.gameId, gameToJoin);
     }
     return gameToJoin.getGameData();
   }
 
   @SubscribeMessage('game:step')
-  handleNextStep(
+  async handleNextStep(
     client: Socket,
     dto: { gameId: string; coordinates: ICoordinates },
   ) {
     const userId = this.socketIdToUserId.get(client.id);
-    if (!userId) {
-      return { error: 'Authentication error.' };
-    }
+    if (!userId) return { error: 'Authentication error.' };
 
-    const game = this.gamesManager.games.get(dto.gameId);
-
-    if (!game) {
-      return { error: 'The game not found.' };
-    }
+    const game = await this.gamesManager.getGame(dto.gameId);
+    if (!game) return { error: 'Game not found.' };
 
     if (game.status !== GameStatus.Started) {
-      return { error: 'The game not started.' };
+      return { error: 'The game has not started.' };
     }
 
     if (userId !== game.currentPlayerPersistentId()) {
       return { error: 'Not your turn.' };
     }
 
-    const gameData = this.gamesManager.nextStep(dto.gameId, dto.coordinates);
-    if (!gameData) {
-      return { error: 'Invalid step.' };
-    }
+    game.nextStep(dto.coordinates);
 
+    await this.gamesManager.saveGame(dto.gameId, game);
+
+    const gameData = game.getGameData();
     this.server.to(dto.gameId).emit('game:update', gameData);
 
     if (gameData.status === GameStatus.Finished) {
-      Logger.log(`Game finished id: ${dto.gameId}`);
+      Logger.debug(`Game finished id: ${dto.gameId}`);
 
       this.server
         .to(dto.gameId)
         .emit('game:finish', { gameId: dto.gameId, gameData });
 
-      this.gamesManager.endGame(dto.gameId);
+      await this.gamesManager.endGame(dto.gameId);
     }
-
     return gameData;
-  }
-
-  removeUser(userId: string, dto: { gameId: string; username: string }) {
-    const oldGameData = this.gamesManager.findGameByUserId(userId);
-    if (oldGameData && oldGameData.gameId !== dto.gameId) {
-      Logger.warn(
-        `User ${userId} is leaving old game ${oldGameData.gameId} to join ${dto.gameId}`,
-      );
-      oldGameData.game.removeUser(userId);
-
-      this.server.to(oldGameData.gameId).emit('game:opponent_left', { userId });
-    }
   }
 }

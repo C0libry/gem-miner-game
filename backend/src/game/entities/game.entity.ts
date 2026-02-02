@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CreateGameDto } from '../dto/create-game.dto';
 import { randomUUID } from 'crypto';
 import {
@@ -9,6 +9,21 @@ import {
   MatrixType,
   OutputMatrixType,
 } from '@/types';
+import { DRIZZLE_PROVIDER_TOKEN } from '@/db/drizzle.provider';
+import { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import * as schema from '@/db/schema';
+import { and, eq, lt } from 'drizzle-orm';
+import { CreateGameScheme } from '@/contracts';
+
+interface IGameState {
+  status: GameStatus;
+  matrix: MatrixType;
+  users: IUser[];
+  step: number;
+  winnerUsername?: string;
+  isPublic: boolean;
+  gemQuantity: number;
+}
 
 class Game {
   private _status: GameStatus = GameStatus.Waiting;
@@ -17,22 +32,63 @@ class Game {
   private step: number = 0;
   private winnerUsername?: string = null;
   public readonly isPublic: boolean;
+  private readonly gemQuantity: number;
 
   constructor(
     height: number,
     width: number,
-    private readonly gemQuantity: number,
+    gemQuantity: number,
     isPublic: boolean,
+    matrix?: MatrixType,
   ) {
-    if (gemQuantity % 2 === 0)
-      throw new Error('Gem quantity number must be odd.');
+    CreateGameScheme.parse({
+      height,
+      width,
+      gemQuantity,
+      isPublic,
+    });
 
-    if (gemQuantity > height * width)
-      throw new Error('Gems quantity is too match.');
+    this.gemQuantity = gemQuantity;
 
-    this.matrix = this.createField(height, width);
-    this.addGems();
+    if (matrix) {
+      this.matrix = matrix;
+    } else {
+      this.matrix = this.createField(height, width);
+      this.addGems();
+    }
     this.isPublic = isPublic;
+  }
+
+  public getState(): IGameState {
+    return {
+      status: this._status,
+      matrix: this.matrix,
+      users: this.users,
+      step: this.step,
+      winnerUsername: this.winnerUsername,
+      isPublic: this.isPublic,
+      gemQuantity: this.gemQuantity,
+    };
+  }
+
+  public static fromState(state: IGameState): Game {
+    const height = state.matrix.length;
+    const width = state.matrix[0].length;
+
+    const game = new Game(
+      height,
+      width,
+      state.gemQuantity,
+      state.isPublic,
+      state.matrix,
+    );
+
+    game._status = state.status;
+    game.users = state.users;
+    game.step = state.step;
+    game.winnerUsername = state.winnerUsername;
+
+    return game;
   }
 
   get status() {
@@ -43,7 +99,6 @@ class Game {
     return {
       status: this.status,
       outputMatrix: this.getOutputMatrix(),
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       users: this.users.map(({ userId, socketId, ...user }) => user),
       step: this.step,
       winningScore: this.winningScore(),
@@ -81,7 +136,7 @@ class Game {
     return this.getGameData();
   }
 
-  nextStep(coordinates) {
+  nextStep(coordinates: ICoordinates) {
     if (this.status !== GameStatus.Started) return;
 
     this.openCell(coordinates);
@@ -96,9 +151,9 @@ class Game {
     return this.getGameData();
   }
 
-  openAll() {
-    this.matrix.map((line, h) => {
-      line.map((_, w) => {
+  private openAll() {
+    this.matrix.forEach((line, h) => {
+      line.forEach((_, w) => {
         this.matrix[h][w].isOpen = true;
       });
     });
@@ -136,25 +191,40 @@ class Game {
     );
   }
 
-  private addGems() {
-    let currentGemQuantity = this.gemQuantity;
-
+  private getFreeCells() {
     const height = this.matrix.length;
     const width = this.matrix[0].length;
+    const freeCells: Array<ICoordinates> = [];
 
-    while (currentGemQuantity) {
-      const x = Math.floor(Math.random() * width);
-      const y = Math.floor(Math.random() * height);
-
-      if (this.matrix[y][x].value !== '💎') {
-        this.matrix[y][x].value = '💎';
-
-        this.getAllNeighbors({ x, y }).forEach((coordinates) =>
-          this.inc(coordinates),
-        );
-
-        currentGemQuantity--;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (this.matrix[y][x].value !== '💎') {
+          freeCells.push({ x, y });
+        }
       }
+    }
+
+    return freeCells;
+  }
+
+  private addGems() {
+    const freeCells = this.getFreeCells();
+
+    if (freeCells.length === 0) {
+      Logger.warn('No more space.');
+      return;
+    }
+
+    const gemsToPlace = Math.min(this.gemQuantity, freeCells.length);
+
+    for (let i = 0; i < gemsToPlace; i++) {
+      const index = Math.floor(Math.random() * freeCells.length);
+      const { x, y } = freeCells.splice(index, 1)[0];
+
+      this.matrix[y][x].value = '💎';
+      this.getAllNeighbors({ x, y }).forEach((coordinates) =>
+        this.inc(coordinates),
+      );
     }
   }
 
@@ -247,69 +317,68 @@ class Game {
 
 @Injectable()
 export class GamesManager {
-  games: Map<string, Game> = new Map();
+  constructor(
+    @Inject(DRIZZLE_PROVIDER_TOKEN)
+    private db: BetterSQLite3Database<typeof schema>,
+  ) {}
 
-  createNewGame(dto: CreateGameDto) {
+  async createNewGame(dto: CreateGameDto): Promise<string> {
     const gameId = randomUUID();
+    const game = new Game(dto.height, dto.width, dto.gemQuantity, dto.isPublic);
+    const gameState = game.getState();
 
-    this.games.set(
-      gameId,
-      new Game(dto.height, dto.width, dto.gemQuantity, dto.isPublic),
-    );
+    await this.db.insert(schema.games).values({
+      id: gameId,
+      status: game.status,
+      isPublic: game.isPublic,
+      playerCount: gameState.users.length,
+      gameState,
+    });
 
     return gameId;
   }
 
-  findWaitingGame(): string | undefined {
-    for (const [gameId, game] of this.games.entries()) {
-      if (
-        game.isPublic &&
-        game.status === GameStatus.Waiting &&
-        game.getGameData().users.length < 2
-      ) {
-        return gameId;
-      }
-    }
-    return undefined;
+  async findWaitingGame(): Promise<string | undefined> {
+    const result = await this.db
+      .select({ id: schema.games.id })
+      .from(schema.games)
+      .where(
+        and(
+          eq(schema.games.isPublic, true),
+          eq(schema.games.status, GameStatus.Waiting),
+          lt(schema.games.playerCount, 2),
+        ),
+      )
+      .get();
+
+    return result?.id;
   }
 
-  findGameByUserId(userId: string): { gameId: string; game: Game } | undefined {
-    for (const [gameId, game] of this.games.entries()) {
-      if (game.findUserByUserId(userId)) {
-        return { gameId, game };
-      }
-    }
-    return undefined;
+  async getGame(gameId: string): Promise<Game | undefined> {
+    const result = await this.db
+      .select()
+      .from(schema.games)
+      .where(eq(schema.games.id, gameId))
+      .get();
+
+    if (!result) return undefined;
+
+    return Game.fromState(result.gameState as IGameState);
   }
 
-  reconnectUser(
-    userId: string,
-    newSocketId: string,
-  ): { gameId: string; gameData: IGameData } | undefined {
-    const findResult = this.findGameByUserId(userId);
-    if (findResult) {
-      const { gameId, game } = findResult;
-      game.reconnectUser(userId, newSocketId);
-      return { gameId, gameData: game.getGameData() };
-    }
-    return undefined;
+  async saveGame(gameId: string, game: Game): Promise<void> {
+    const gameState = game.getState();
+    await this.db
+      .update(schema.games)
+      .set({
+        status: game.status,
+        playerCount: gameState.users.length,
+        gameState,
+      })
+      .where(eq(schema.games.id, gameId));
   }
 
-  nextStep(gameId: string, coordinates: ICoordinates) {
-    const game = this.games.get(gameId);
-    if (!game) return null; // Or throw an error
-
-    const gameData = game.nextStep(coordinates);
-
-    return gameData;
-  }
-
-  endGame(gameId: string) {
-    const game = this.games.get(gameId);
-    if (game) {
-      game.openAll();
-      // maybe do something else before deleting
-      this.games.delete(gameId);
-    }
+  async endGame(gameId: string) {
+    await this.db.delete(schema.games).where(eq(schema.games.id, gameId));
   }
 }

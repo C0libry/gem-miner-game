@@ -7,13 +7,13 @@ export class GameController {
   constructor(private gamesManager: GamesManager) {}
 
   @Post()
-  startGame(@Body() dto: CreateGameDto) {
-    return this.gamesManager.createNewGame(dto);
+  async startGame(@Body() dto: CreateGameDto) {
+    return await this.gamesManager.createNewGame(dto);
   }
 
   @Get('/find')
-  findGame() {
-    const waitingGameId = this.gamesManager.findWaitingGame();
+  async findGame() {
+    const waitingGameId = await this.gamesManager.findWaitingGame();
     if (waitingGameId) {
       return waitingGameId;
     }
@@ -29,6 +29,6 @@ export class GameController {
       gemQuantity: value % 2 === 0 ? value + 1 : value,
       isPublic: true,
     };
-    return this.gamesManager.createNewGame(defaultGameDto);
+    return await this.gamesManager.createNewGame(defaultGameDto);
   }
 }

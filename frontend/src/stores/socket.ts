@@ -27,6 +27,7 @@ const getCredentials = async (): Promise<{ userId: string; userSecret: string }>
 
 export const useSocketStore = defineStore('socket', () => {
   const socket = ref<Socket | null>(null);
+  const isConnected = ref(false);
 
   async function connect() {
     if (socket.value?.connected) return;
@@ -42,10 +43,12 @@ export const useSocketStore = defineStore('socket', () => {
 
     socket.value.on('connect', () => {
       console.log('🔥 Socket.IO connected');
+      isConnected.value = true;
     });
 
     socket.value.on('disconnect', () => {
       console.log('❌ Socket.IO disconnected');
+      isConnected.value = false;
     });
 
     socket.value.on('connect_error', error => {
@@ -96,5 +99,5 @@ export const useSocketStore = defineStore('socket', () => {
     disconnect();
   });
 
-  return { socket, connect, disconnect };
+  return { socket, isConnected, connect, disconnect };
 });
