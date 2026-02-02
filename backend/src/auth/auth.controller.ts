@@ -6,7 +6,7 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('session')
-  createSession() {
-    return this.authService.createSession();
+  async createSession() {
+    return await this.authService.createSession();
   }
 }

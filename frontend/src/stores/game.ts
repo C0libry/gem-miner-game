@@ -49,11 +49,18 @@ export const useGameStore = defineStore('game', () => {
     showGameOverModal.value = false;
   }
 
-  function clear() {
+  function clearFullSession() {
     gameData.value = null;
     username.value = null;
     gameResult.value = null;
     showGameOverModal.value = false;
+    localStorage.removeItem('userId');
+    localStorage.removeItem('userSecret');
+    localStorage.removeItem('username');
+  }
+
+  function clear() {
+    clearFullSession();
   }
 
   return {
@@ -68,6 +75,7 @@ export const useGameStore = defineStore('game', () => {
     isWinner,
     endGame,
     closeGameOverModal,
-    clear
+    clear,
+    clearFullSession
   };
 });

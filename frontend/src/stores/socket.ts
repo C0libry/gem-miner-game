@@ -1,7 +1,7 @@
+import axios from 'axios';
 import { defineStore } from 'pinia';
 import { Socket, io } from 'socket.io-client';
 import { onUnmounted, ref } from 'vue';
-import axios from 'axios';
 
 import { useGameStore } from './game';
 import type { IGameData } from '@/types';
@@ -15,7 +15,7 @@ const getCredentials = async (): Promise<{ userId: string; userSecret: string }>
   if (!userId || !userSecret) {
     console.log('No local credentials found. Fetching from server...');
     const response = await axios.post<{ userId: string; userSecret: string }>(
-      `${backendUrl}/auth/session`,
+      `${backendUrl}/auth/session`
     );
     userId = response.data.userId;
     userSecret = response.data.userSecret;
@@ -70,15 +70,19 @@ export const useSocketStore = defineStore('socket', () => {
       gameStore.gameData = data;
     });
 
-    socket.value.on(
-      'game:finish',
-      (data: { gameid: string; gameData: IGameData; isWinner: boolean }) => {
-        console.warn('game:finish:', data);
-        const gameStore = useGameStore();
-        gameStore.gameData = data.gameData;
-        gameStore.endGame(data.isWinner);
-      },
-    );
+    socket.value.on('game:finish', (data: { gameid: string; gameData: IGameData }) => {
+      console.warn('game:finish:', data);
+      const gameStore = useGameStore();
+      gameStore.gameData = data.gameData;
+      gameStore.endGame();
+    });
+
+    socket.value.on('auth:failed', () => {
+      console.error('🚨 Authentication failed. Clearing session and reloading.');
+      const gameStore = useGameStore();
+      gameStore.clearFullSession();
+      window.location.reload();
+    });
   }
 
   function disconnect() {

@@ -22,13 +22,14 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private authService: AuthService,
   ) {}
 
-  handleConnection(client: Socket) {
+  async handleConnection(client: Socket) {
     const { userId, userSecret } = client.handshake.auth;
 
-    if (!this.authService.authenticate(userId, userSecret)) {
+    if (!(await this.authService.authenticate(userId, userSecret))) {
       Logger.error(
         `Authentication failed for userId: ${userId}. Disconnecting client: ${client.id}`,
       );
+      client.emit('auth:failed');
       client.disconnect(true);
       return;
     }
