@@ -7,7 +7,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Injectable, Logger } from '@nestjs/common';
-import { GamesManager } from './entities/game.entity';
+import { GamesManager } from './games-manager';
 import { GameStatus, ICoordinates } from '@/types';
 import { AuthService } from '@/auth/auth.service';
 

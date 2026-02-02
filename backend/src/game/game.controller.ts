@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { CreateGameDto } from './dto/create-game.dto';
-import { GamesManager } from './entities/game.entity';
+import { GamesManager } from './games-manager';
 
 @Controller('game')
 export class GameController {

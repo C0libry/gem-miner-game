@@ -35,3 +35,13 @@ export interface IGameData {
   currentPlayerUsername: string;
   winnerUsername?: string;
 }
+
+export interface IGameState {
+  status: GameStatus;
+  matrix: MatrixType;
+  users: IUser[];
+  step: number;
+  winnerUsername?: string;
+  isPublic: boolean;
+  gemQuantity: number;
+}

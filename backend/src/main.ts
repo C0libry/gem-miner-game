@@ -15,7 +15,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ZodValidationPipe());
 
   const configService = new ConfigService();
-  const port = configService.get<number>('PORT');
+  const port = configService.getOrThrow<number>('PORT');
 
   await app.listen(port);
 }

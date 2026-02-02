@@ -10,7 +10,7 @@ export const drizzleProvider = [
     provide: DRIZZLE_PROVIDER_TOKEN,
     useFactory: () => {
       const configService = new ConfigService();
-      const fileName = configService.get<string>('DB_FILE_NAME');
+      const fileName = configService.getOrThrow<string>('DB_FILE_NAME');
       const sqlite = new Database(fileName);
       return drizzle(sqlite, { schema });
     },
