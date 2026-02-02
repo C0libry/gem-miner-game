@@ -73,10 +73,6 @@ async function attemptAutoJoin() {
   }
 }
 
-onMounted(() => {
-  wsClient.connect();
-});
-
 onUnmounted(() => {
   gameStore.gameData = null;
 });
